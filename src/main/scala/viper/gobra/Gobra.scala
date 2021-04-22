@@ -7,8 +7,10 @@
 package viper.gobra
 
 import java.io.File
+import java.util.concurrent.ExecutionException
 
 import com.typesafe.scalalogging.StrictLogging
+import org.apache.commons.lang3.concurrent.ConcurrentException
 import viper.gobra.ast.frontend.PPackage
 import viper.gobra.ast.internal.Program
 import viper.gobra.ast.internal.transform.OverflowChecksTransform
@@ -209,6 +211,27 @@ object GobraRunner extends GobraFrontend with StrictLogging {
         logger.error("An assumption was violated during execution.")
         logger.error(e.getLocalizedMessage, e)
         sys.exit(1)
+
+      case e: ExecutionException =>
+        e.getCause match {
+          case c: ExecutionException =>
+            c.getCause match {
+              case cc: NullPointerException if cc.getStackTrace.nonEmpty =>
+                val origin = cc.getStackTrace.head
+                if (origin.getFileName == "Z3ProverStdIO.scala" && origin.getLineNumber == 404) {
+                  // The Z3 instance died. This is a known issue that is caused by a Z3 bug.
+                  logger.error("Encountered a known Z3 bug. Please, execute the file again.")
+                  sys.exit(1)
+                }
+
+              case _ =>
+            }
+          case _ =>
+        }
+        logger.error("An unknown Exception was thrown.")
+        logger.error(e.getLocalizedMessage, e)
+        sys.exit(1)
+
       case e: Exception =>
         logger.error("An unknown Exception was thrown.")
         logger.error(e.getLocalizedMessage, e)
